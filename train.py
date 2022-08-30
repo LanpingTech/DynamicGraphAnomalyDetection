@@ -1,11 +1,12 @@
 import argparse
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import json
 
 from tqdm import tqdm
 
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
-
+import numpy as np
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
@@ -31,10 +32,10 @@ def parse_arguments():
 
     return parser.parse_args()
 
-def train(epoch, train_loader, model, data, train_idx, optimizer, device):
+def train(epoch, train_loader, model, data, optimizer, device):
     model.train()
 
-    pbar = tqdm(total=train_idx.size(0), ncols=80)
+    pbar = tqdm(total=data.train_idx.size(0), ncols=80)
     pbar.set_description(f'Epoch {epoch:02d}')
 
     total_loss = 0
@@ -43,7 +44,7 @@ def train(epoch, train_loader, model, data, train_idx, optimizer, device):
 
         optimizer.zero_grad()
         out = model(data.x[n_id], adjs)
-        loss = F.nll_loss(out, data.y[n_id[:batch_size]])
+        loss = F.nll_loss(out, data.y[n_id[:batch_size]].squeeze())
         loss.backward()
         optimizer.step()
 
@@ -63,14 +64,15 @@ def test(layer_loader, model, data, device, ):
     out = model.inference(data.x, layer_loader, device)
     y_pred = out.exp()  # (N,num_classes)   
     
-    losses, eval_results = dict(), dict()
+    eval_results = {}
     for key in ['train', 'valid', 'test']:
-        node_id = split_idx[key]
-        node_id = node_id.to(device)
-        losses[key] = F.nll_loss(out[node_id], data.y[node_id]).item()
-        eval_results[key] = evaluator.eval(data.y[node_id], y_pred[node_id])[eval_metric]
+        node_id = getattr(data, f'{key}_idx')
+        eval_result = eval_metric(data.y[node_id], y_pred[node_id])
+        eval_result['loss'] = F.nll_loss(out[node_id], data.y[node_id].squeeze()).item()
+        eval_results[key] = eval_result
+        
             
-    return eval_results, losses, y_pred
+    return eval_results
 
 def eval_metric(y_true, y_pred):
     if torch is not None and isinstance(y_true, torch.Tensor):
@@ -79,10 +81,15 @@ def eval_metric(y_true, y_pred):
     if torch is not None and isinstance(y_pred, torch.Tensor):
         y_pred = y_pred.detach().cpu().numpy()
 
-    
-
-    
-
+    y_true = y_true.squeeze()
+    y_pred = y_pred.argmax(axis=-1)
+    eval_result = {
+        'accuracy': accuracy_score(y_true, y_pred),
+        'precision': precision_score(y_true, y_pred),
+        'recall': recall_score(y_true, y_pred),
+        'f1': f1_score(y_true, y_pred)
+    }
+    return eval_result
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -91,7 +98,7 @@ if __name__ == '__main__':
 
 
     data = GraphDataset('data', args.data_name, transform=T.ToSparseTensor())
-    args.num_classes = 2
+    args.num_classes = data.num_classes
     data, train_loader, layer_loader = preprocessing(data, device)
 
     model_params = {
@@ -105,9 +112,29 @@ if __name__ == '__main__':
     }
     model = GATModel(**model_params).to(device)
 
-    print(data.num_features)
-
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+
+    min_valid_loss = 1e8
+
+    checkpoint_dict = {}
+
+    for epoch in range(1, args.epochs+1):
+        loss = train(epoch, train_loader, model, data, optimizer, device)
+        eval_results = test(layer_loader, model, data, device)
+        if eval_results['valid']['loss'] < min_valid_loss:
+            min_valid_loss = eval_results['valid']['loss']
+            torch.save(model.state_dict(), 'model.pt')
+        
+        print(f'Epoch: {epoch:02d}, Train Loss: {eval_results["train"]["loss"]:.4f}, Valid Loss: {eval_results["valid"]["loss"]:.4f}')
+
+        checkpoint_dict[epoch] = eval_results
+    
+    with open('checkpoint.json', 'w', encoding='utf-8') as f_out:
+        json.dump(checkpoint_dict, f_out, ensure_ascii=False, indent=2)
+
+
+
+
 
 
 
