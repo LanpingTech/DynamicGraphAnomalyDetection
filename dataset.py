@@ -68,7 +68,7 @@ class GraphDataset(InMemoryDataset):
     def __repr__(self) -> str:
         return f'{self.name}()'
 
-def preprocessing(data, device, batch_size=1024):
+def preprocessing(data, device, batch_size=512):
     data = data[0]
     data.adj_t = data.adj_t.to_symmetric()
     x = data.x

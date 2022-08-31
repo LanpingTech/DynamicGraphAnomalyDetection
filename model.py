@@ -79,6 +79,8 @@ class GATModel(torch.nn.Module):
                         x = self.bns[i](x)
                 xs.append(x)
 
+                torch.cuda.empty_cache()
+
                 pbar.update(batch_size)
 
             x_all = torch.cat(xs, dim=0)
