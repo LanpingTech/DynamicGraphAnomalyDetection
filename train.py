@@ -1,6 +1,6 @@
 import argparse
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import json
 
 from tqdm import tqdm
@@ -28,7 +28,7 @@ def parse_arguments():
 
     # Training settings
     parser.add_argument('--data_name', default='dgraphfin.npz')
-    parser.add_argument('--epochs', type=int, default=100)
+    parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=5e-7)
 
