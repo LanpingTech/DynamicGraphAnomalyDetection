@@ -1,4 +1,4 @@
-# Node Classification
+# Dynamic Graph Anomaly Detection
 ## Torch Geometric 依赖安装
 
 ### 查看一下本地的torch和cuda的版本
